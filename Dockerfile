@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y \
     git unzip libicu-dev libpq-dev libzip-dev \
     && docker-php-ext-install intl pdo pdo_mysql zip
 
+# Activer mod_rewrite pour Symfony
+RUN a2enmod rewrite
+
 # Installer Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" && \
     php composer-setup.php --install-dir=/usr/local/bin --filename=composer && \
@@ -17,15 +20,29 @@ WORKDIR /var/www/html
 # Copier le projet Symfony
 COPY . .
 
-# Corriger les permissions
-RUN chown -R www-data:www-data /var/www/html && chmod -R 777 /var/www/html
-RUN mkdir -p var/cache var/log && chown -R www-data:www-data var/cache var/log
+# Copier le fichier de configuration Apache
+COPY apache-config/000-default.conf /etc/apache2/sites-available/000-default.conf
 
-# Installer les dépendances Symfony
+# Activer le site Apache
+RUN a2ensite 000-default
+
+# Vérifier et corriger les permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html
+
+# Créer et corriger les permissions des répertoires var/cache et var/log
+RUN mkdir -p var/cache var/log \
+    && chown -R www-data:www-data var/cache var/log \
+    && chmod -R 777 var/cache var/log
+
+# Installer les dépendances Symfony en mode production
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Exposer le port 80 pour Railway
+# Vider le cache avant le lancement
+RUN php bin/console cache:clear --env=prod
+
+# Exposer le port 80
 EXPOSE 80
 
-# Lancer Apache
+# Lancer Apache en premier plan
 CMD ["apache2-foreground"]
